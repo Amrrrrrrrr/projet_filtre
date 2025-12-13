@@ -1,69 +1,93 @@
 clear; close all; clc;
 
-fs = 8000;               
-t = 0:1/fs:1;             
+%% 1. Chargement et Paramètres
 data = load("fcno04fz.mat");  
 nom_champ = fieldnames(data);
-x = data.(nom_champ{1});
+x = data.(nom_champ{1}); % Signal de parole chargé
 
-N = 512;                  % taille de trame (en échantillons)
-R = N/2;                  % pas de trame = 50% de recouvrement
-w = hanning(N, 'symmetric'); 
+Fe = 8000;              % Fréquence d'échantillonnage (8kHz)
 
-%% Découpage du signal en trames
-frames = buffer(x, N, N-R, 'nodelay'); % chaque colonne = 1 trame
-nb_trames = size(frames, 2);
+% --- CORRECTION ICI ---
+% Au lieu de fixer T=1, on calcule la durée réelle du signal
+Lx = length(x);         % Nombre d'échantillons réel (57344)
+t = (0:Lx-1)'/Fe;       % Vecteur temps adapté à la longueur de x
+% ----------------------
 
-%% Application de la fenêtre sur chaque trame
-for m = 1:nb_trames 
-    frames(:,m) = frames(:,m) .* w;
-end
+% Paramètres d'analyse
+N = 256;                % Taille de la fenêtre (ex: 32ms)
+R = N/2;                % Recouvrement de 50% (Hop size = 128)
+w = hanning(N);         % Fenêtre de Hanning
 
-%% Reconstruction du signal par addition-recouvrement
-x_rec = zeros(length(x), 1);
+%% 2. Préparation (Zero-Padding)
+nb_zeros_debut = R; 
+x_pad = [zeros(nb_zeros_debut, 1); x; zeros(N, 1)];
+L_pad = length(x_pad);
+y_reconstruit_pad = zeros(L_pad, 1);
 
-for m = 1:nb_trames
-    start_idx = (m-1)*R + 1;
-    end_idx = start_idx + N - 1;
+%% 3. Boucle de Traitement (Analyse -> Synthèse)
+n_trames = floor((L_pad - N) / R) + 1;
 
-    % Éviter de dépasser la taille du signal
-    if end_idx > length(x)
-        break;
-    end
+for k = 1:n_trames
+    % --- Analyse ---
+    idx_debut = (k-1)*R + 1;
+    idx_fin = idx_debut + N - 1;
     
-    x_rec(start_idx:end_idx) = x_rec(start_idx:end_idx) + frames(:,m);
+    segment = x_pad(idx_debut:idx_fin);
+    segment_fenetre = segment .* w; 
+    
+    % Traitement identité (pas de modification pour le moment)
+    segment_traite = segment_fenetre; 
+    
+    % --- Synthèse (Addition-Recouvrement) ---
+    y_reconstruit_pad(idx_debut:idx_fin) = y_reconstruit_pad(idx_debut:idx_fin) + segment_traite;
 end
 
-%% Normalisation pour corriger le fenêtrage 
-% Calcul du facteur de recouvrement total pour chaque échantillon
-win_sum = zeros(length(x),1);
-for m = 1:nb_trames
-    start_idx = (m-1)*R + 1;
-    end_idx = start_idx + N - 1;
-    if end_idx > length(x)
-        break;
-    end
-    win_sum(start_idx:end_idx) = win_sum(start_idx:end_idx) + w;
+%% 4. Post-traitement et Vérification
+% Calcul de la fenêtre de normalisation globale
+W_norm = zeros(L_pad, 1);
+for k = 1:n_trames
+    idx_debut = (k-1)*R + 1;
+    idx_fin = idx_debut + N - 1;
+    W_norm(idx_debut:idx_fin) = W_norm(idx_debut:idx_fin) + w;
 end
-x_rec = x_rec ./ (win_sum + eps); % éviter division par zéro
 
-%% Vérification de la reconstruction
-erreur = norm(x - x_rec) / norm(x);
-fprintf('Erreur relative de reconstruction : %.2e\n', erreur);
+% Astuce : pour éviter la division par zéro dans les zones de padding pur 
+% (où W_norm peut être 0), on remplace les 0 par des 1 juste pour la division.
+% De toute façon, ces zones seront coupées à l'étape suivante.
+W_norm(W_norm < 1e-10) = 1; 
 
-%% Affichage des signaux
+% Normalisation
+y_reconstruit_pad = y_reconstruit_pad ./ W_norm;
+
+% Suppression du padding pour retrouver la taille originale exacte
+y_final = y_reconstruit_pad(nb_zeros_debut+1 : nb_zeros_debut+Lx);
+
+% --- Visualisation de l'erreur ---
+erreur = x - y_final;
+
+%% Affichage du signal original
 figure;
-plot(x, 'b'); hold on;
-plot(x_rec, 'r--');
-legend('Signal original', 'Signal reconstruit');
-title('Vérification de la reconstruction (addition-recouvrement)');
-xlabel('Échantillons'); ylabel('Amplitude');
+plot(t, x, 'b');
+title('Signal original');
+xlabel('Temps (s)');
+ylabel('Amplitude');
+grid on;
+
+%% Affichage du signal reconstruit
+figure;
+plot(t, y_final, 'r');
+title('Signal reconstruit (après addition-recouvrement)');
+xlabel('Temps (s)');
+ylabel('Amplitude');
 grid on;
 
 %% Affichage du signal d’erreur
 figure;
-plot(x - x_rec);
-title('Différence entre signal original et reconstruit');
-xlabel('Échantillons'); ylabel('Erreur');
+plot(t, erreur);
+title('Erreur de reconstruction (x - y_{final})');
+xlabel('Temps (s)');
+ylabel('Amplitude');
 grid on;
 
+
+disp(['Erreur maximale de reconstruction : ' num2str(max(abs(erreur)))]);

@@ -1,7 +1,8 @@
+clear; close all; clc;
 N = 2000;     
 sigma = 2;     
 b = sigma * randn(1, N);
-%% Autocorrélation
+%% Autocorrélation  
 
 [Rb, ~] = xcorr(b, 'biased');
 [Rub, ~] = xcorr(b, 'unbiased');
@@ -135,6 +136,48 @@ SFw_mean = mean(SF_welch_vals);
 SFw_std = std(SF_welch_vals);
 SFp_mean = mean(SF_p_vals);
 SFp_std = std(SF_p_vals);
+%% Autocorrélation
+
+% On récupère aussi le vecteur des décalages (lags)
+[Rb, lags]  = xcorr(b, 'biased');
+[Rub, ~]    = xcorr(b, 'unbiased');
+
+% Autocorrélation théorique du bruit blanc gaussien N(0, sigma^2)
+% R_theo(k) = sigma^2 si k = 0, 0 sinon
+R_theo = sigma^2 * (lags == 0);
+
+%% Figure 1 : autocorrélation biaisée (style comme ton plot)
+
+figure;
+plot(lags, Rb, 'b'); 
+xline(0, '--k');
+legend('Autocorr. biaisée');
+xlabel('Décalage k');
+ylabel('R_b(k)');
+title('Autocorrélation estimée du bruit blanc (biaisée)');
+grid on;
+
+%% Figure 2 : autocorrélation non biaisée
+
+figure;
+plot(lags, Rub, 'r'); 
+xline(0, '--k');
+legend('Autocorr. non biaisée');
+xlabel('Décalage k');
+ylabel('R_b(k)');
+title('Autocorrélation estimée du bruit blanc (non biaisée)');
+grid on;
+
+%% Figure 3 : autocorrélation théorique
+
+figure;
+plot(lags, R_theo, 'k'); 
+xline(0, '--k');
+legend('Autocorr. théorique');
+xlabel('Décalage k');
+ylabel('R_{theo}(k)');
+title('Autocorrélation théorique du bruit blanc');
+grid on;
 
 %%  Affichage 
 figure;

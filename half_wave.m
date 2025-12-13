@@ -16,12 +16,10 @@ nfft = 512;
 
 % Paramètres soustraction spectrale
 alpha = 1.0;            
-spectral_floor = 0.002; 
-beta = 0.02;            
 
-% RSB (SNR) cibles et nombre réalisations
+% RSB cible et nombre de réalisations
 RSB_targets = [5, 10, 15]; 
-nRealz = 3; % Réduit pour le test rapide (remettre à 30)
+nRealz = 30; 
 
 % Stockage résultats
 gain_RSB_moy = zeros(length(RSB_targets),1);
@@ -35,17 +33,15 @@ for idxRSB = 1:length(RSB_targets)
     for r = 1:nRealz
         % Générer bruit blanc
         b = randn(len,1);
-        
+
         % Ajustement RSB
         P_s = mean(s.^2);
         desired_Pb = P_s / (10^(targetRSB/10)); 
-        b = b * sqrt(desired_Pb / mean(b.^2)); 
+        b = b * sqrt(desired_Pb / mean(b.^2)); %bizarre
         
         y = s + b;
         
-        %% Estimation du spectre du bruit (Approximation puissance FFT)
-        % Note : Comparer une puissance temporelle moyenne à des bins FFT
-        % nécessite normalement un facteur d'échelle, mais on garde votre logique.
+        %% Estimation du spectre du bruit 
         P_b_est = mean(b.^2);                
         
         %% Analyse trame par trame
@@ -65,17 +61,13 @@ for idxRSB = 1:length(RSB_targets)
             P_Y = magY.^2;
             
             % Correction d'échelle simple pour l'estimation de bruit
-            % (Le bruit estimé doit être à l'échelle de la FFT)
-            P_B = (P_b_est * N) * ones(size(P_Y)); % Facteur N approximatif ajouté
+            P_B = (P_b_est * sum(w.^2)) * ones(size(P_Y));
             
             P_S_hat = P_Y - alpha * P_B;
-            P_S_hat = max(P_S_hat, 0); % Half-wave rectification
+            P_S_hat = max(P_S_hat, 0); 
             
             magS_hat = sqrt(P_S_hat);
-            
-            % --- CORRECTION RECONSTRUCTION ---
-            % Puisque magS_hat et phaseY sont déjà sur 512 points (spectre complet)
-            % on recombine et on fait l'IFFT directement.
+
             S_hat_full = magS_hat .* exp(1j * phaseY);
             
             s_frame_rec = real(ifft(S_hat_full, nfft));
@@ -85,7 +77,6 @@ for idxRSB = 1:length(RSB_targets)
             out_buf(n0:n0+N-1) = out_buf(n0:n0+N-1) + s_frame_rec;
             win_sum(n0:n0+N-1) = win_sum(n0:n0+N-1) + (w.^2);
             
-            % --- CORRECTION PLOT ---
             k_affiche = 10; 
             if i == k_affiche && r == 1 % Affiche seulement pour la 1ère réal
                 tvec = (0:N-1)/fs;
@@ -99,8 +90,7 @@ for idxRSB = 1:length(RSB_targets)
                 title(['Trame ' num2str(i) ' (Temporel)']);
                 
                 subplot(2,1,2);
-                f = (0:(nfft/2))*(fs/nfft); % Vecteur de taille 257
-                
+                f = (0:(nfft/2))*(fs/nfft);                 
                 % On limite les données à nfft/2 + 1 pour correspondre à f
                 idx_half = 1:(nfft/2 + 1);
                 
